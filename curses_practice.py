@@ -1,36 +1,81 @@
 import curses
+from time import sleep
 
 HEADER_COLOR = 1
 PRODUCT_COLOR = 2
+GRAY = 244
 BORDER_COLOR = 3
 
 
 def make_header(scn_h, scn_w):
     # Create a window for the header
     # Get screen dimensions
-    header = curses.newwin(3, scn_w - (int(scn_w / 3)), 15, int(scn_w / 6))
-    header.bkgd(curses.color_pair(BORDER_COLOR))
-    header.box()
-    header.addstr(1, 2, "Welcome to MyTerminalShop", curses.color_pair(HEADER_COLOR) | curses.A_BOLD)
-    header.refresh()
-    return header
+    header1_contents = "terminal"
+    header1 = curses.newwin(3, len(header1_contents) + 5, 0, int(scn_w / 6))
+    header1.bkgd(curses.color_pair(BORDER_COLOR))
+    header1.border(
+        curses.ACS_VLINE,
+        curses.ACS_VLINE,
+        curses.ACS_HLINE,
+        curses.ACS_HLINE,
+        curses.ACS_ULCORNER,
+        curses.ACS_URCORNER,
+        curses.ACS_LLCORNER,
+        curses.ACS_LRCORNER,
+    )
+    header1.addstr(1, 2, header1_contents, curses.color_pair(HEADER_COLOR) | curses.A_BOLD)
+    header1.refresh()
+
+    header2_contents = "s shop"
+    header2 = curses.newwin(3, 8, 0, int(scn_w / 6) + len(header1_contents) + 4)
+    header2.bkgd(curses.color_pair(BORDER_COLOR))
+    header2.border(
+        curses.ACS_VLINE,
+        curses.ACS_VLINE,
+        curses.ACS_HLINE,
+        curses.ACS_HLINE,
+        curses.ACS_ULCORNER,
+        curses.ACS_URCORNER,
+        curses.ACS_LLCORNER,
+        curses.ACS_LRCORNER,
+    )
+    header2.addstr(1, 2, header2_contents, curses.color_pair(HEADER_COLOR) | curses.A_BOLD)
+    header2.refresh()
+    return header1, header2
+
+
+def show_welcome_screen(scn_h, scn_w) -> None:
+    curses.curs_set(1)
+    message = "terminal"
+    welcome_screen = curses.newwin(1, len(message) + 1, int(scn_h / 2), int(scn_w / 2) - int(len(message) / 2))
+    for char in message:
+        welcome_screen.addch(char, curses.color_pair(HEADER_COLOR) | curses.A_BOLD)
+        sleep(0.25)
+        welcome_screen.refresh()
+    sleep(1)
+    curses.curs_set(0)
+    del welcome_screen
 
 
 def main(stdscr: curses.window):
     stdscr.refresh()
+
     # Hide the cursor
     curses.curs_set(0)
 
     # Define color pairs
-    curses.init_pair(HEADER_COLOR, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(HEADER_COLOR, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.init_pair(PRODUCT_COLOR, curses.COLOR_CYAN, curses.COLOR_BLACK)
-    curses.init_pair(BORDER_COLOR, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(BORDER_COLOR, GRAY, curses.COLOR_BLACK)
 
     # Get screen dimensions
     height, width = stdscr.getmaxyx()
 
+    # show_welcome_screen(height, width)
+
     # Create a window for the main content
-    main_win = curses.newwin(height - 5, width, 3, 0)
+    main_win = curses.newwin(height - 6, width, 3, 0)
+    main_win.attron(curses.color_pair(BORDER_COLOR))
     main_win.box()
 
     # Sample product data
