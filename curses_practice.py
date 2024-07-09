@@ -7,41 +7,65 @@ GRAY = 244
 BORDER_COLOR = 3
 
 
+def draw_box(win: curses.window, height, width):
+    win.attron(curses.color_pair(BORDER_COLOR))
+    win.box()
+    win.addch(0, 0, curses.ACS_ULCORNER)
+    win.addch(0, width - 1, curses.ACS_URCORNER)
+    win.addch(height - 1, 0, curses.ACS_LLCORNER)
+    win.addch(height - 1, width - 1, curses.ACS_LRCORNER)
+    win.attroff(curses.color_pair(BORDER_COLOR))
+
+
 def make_header(scn_h, scn_w):
     # Create a window for the header
     # Get screen dimensions
+
+    height = 3
+    width = 15  # int(0.8 * scn_w)
+    start_y, start_x = 1, 1
+
+    terminal = curses.newwin(height, width, start_y, start_x)
+    shop = curses.newwin(height, width, start_y, start_x + width - 1)
+    about = curses.newwin(height, width, start_y, start_x + 2 * (width - 1))
+    faq = curses.newwin(height, width, start_y, start_x + 3 * (width - 1))
+    cart = curses.newwin(height, width + 5, start_y, start_x + 4 * (width - 1))
+
+    draw_box(terminal, height, width)
+    draw_box(shop, height, width)
+    draw_box(about, height, width)
+    draw_box(faq, height, width)
+    draw_box(cart, height, width + 5)
+
+    terminal.addstr(1, 2, "terminal")
+    shop.addstr(1, 2, "s shop")
+    about.addstr(1, 2, "a about")
+    faq.addstr(1, 2, "f faq")
+    cart.addstr(1, 2, "c cart $ 0")
+
+    terminal.refresh()
+    shop.refresh()
+    about.refresh()
+    faq.refresh()
+    cart.refresh()
+
+    """
     header1_contents = "terminal"
     header1 = curses.newwin(3, len(header1_contents) + 5, 0, int(scn_w / 6))
     header1.bkgd(curses.color_pair(BORDER_COLOR))
-    header1.border(
-        curses.ACS_VLINE,
-        curses.ACS_VLINE,
-        curses.ACS_HLINE,
-        curses.ACS_HLINE,
-        curses.ACS_ULCORNER,
-        curses.ACS_URCORNER,
-        curses.ACS_LLCORNER,
-        curses.ACS_LRCORNER,
-    )
+    header1.box()
     header1.addstr(1, 2, header1_contents, curses.color_pair(HEADER_COLOR) | curses.A_BOLD)
     header1.refresh()
 
     header2_contents = "s shop"
-    header2 = curses.newwin(3, 8, 0, int(scn_w / 6) + len(header1_contents) + 4)
+    header2 = curses.newwin(3, 8, 0, int(scn_w / 6) + len(header1_contents) + 5)
     header2.bkgd(curses.color_pair(BORDER_COLOR))
-    header2.border(
-        curses.ACS_VLINE,
-        curses.ACS_VLINE,
-        curses.ACS_HLINE,
-        curses.ACS_HLINE,
-        curses.ACS_ULCORNER,
-        curses.ACS_URCORNER,
-        curses.ACS_LLCORNER,
-        curses.ACS_LRCORNER,
-    )
+    header2.box()
     header2.addstr(1, 2, header2_contents, curses.color_pair(HEADER_COLOR) | curses.A_BOLD)
     header2.refresh()
-    return header1, header2
+    """
+    # return header1, header2
+    return cart
 
 
 def show_welcome_screen(scn_h, scn_w) -> None:
