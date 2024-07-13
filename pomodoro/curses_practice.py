@@ -4,31 +4,40 @@ from pomodoro import ASCII_NUM
 from datetime import datetime, timedelta
 
 HEADER_COLOR = 1
-PRODUCT_COLOR = 2
+WORK_COLOR = 2
+BREAK_COLOR = 3
 GRAY = 244
-BORDER_COLOR = 3
+BORDER_COLOR = 5
+MODE_WORK = "work"
+MODE_BREAK = "break"
+DEFAULT_WORK_SECONDS = 25 * 60
+DEFAULT_BREAK_SECONDS = 5 * 60
+
+mode = MODE_WORK
 
 
-def make_header(title: str, options: list[str], scn_w) -> dict[str, curses.window]:
+def make_header(options: list[tuple[str, int]], scn_w) -> dict[str, curses.window]:
+    # first option is title
+    # options: (header text, color pair id)
     # Create a window for the header
     # Get screen dimensions
 
-    options.insert(0, title)
     header_height = 3
-    header_length = sum(len(option) + 4 for option in options)
+    header_length = sum(len(option[0]) + 4 for option in options)
     cursor = int((scn_w - header_length) / 2) - 1
 
     if header_length > scn_w - 2:
         raise ValueError("Header too long")
 
     sections: dict[str, curses.window] = {}
-    for i, option in enumerate(options):
-        section_contents = option
+    for i, pair in enumerate(options):
+        text, color_pair = pair
+        section_contents = text
         section_width = len(section_contents) + 4
         section = curses.newwin(header_height, section_width, 0, cursor)
         section.bkgd(curses.color_pair(BORDER_COLOR))
         section.box()
-        section_format = curses.color_pair(HEADER_COLOR)
+        section_format = curses.color_pair(color_pair)
         if i == 0:
             section_format = section_format | curses.A_BOLD
         section.addstr(1, 2, section_contents, section_format)
@@ -63,7 +72,6 @@ def make_timer_window(scn_h, scn_w) -> dict[int, curses.window]:
     main_win.attron(curses.color_pair(BORDER_COLOR))
     main_win.box()
     main_win.attroff(curses.color_pair(BORDER_COLOR))
-    big_char_positions = {0: ASCII_NUM[2], 1: ASCII_NUM[5], 2: ASCII_NUM[0], 3: ASCII_NUM[0]}
     big_char_windows = {
         0: curses.newwin(10, 11, content_y_start, content_x_start),
         1: curses.newwin(10, 11, content_y_start, content_x_start + 12),
@@ -71,36 +79,48 @@ def make_timer_window(scn_h, scn_w) -> dict[int, curses.window]:
         3: curses.newwin(10, 11, content_y_start, content_x_start + 12 * 3 + 3),
     }
     main_win.refresh()
-    for pos, win in big_char_windows.items():
-        win.addstr(big_char_positions[pos])
-        win.refresh()
     return big_char_windows
 
 
-def timer_loop(big_char_windows: dict[int, curses.window], start_time: datetime, timer_minutes: int):
-    end_time = start_time + timedelta(minutes=timer_minutes)
+def set_time(big_char_windows: dict[int, curses.window], seconds: int, color: int):
+    mins = str(int(seconds / 60))
+    secs = str(int(seconds % 60))
+    if len(mins) == 1:
+        mins = "0" + mins
+    if len(secs) == 1:
+        secs = "0" + secs
+    # only update if number has changed
+    big_char_windows[0].addstr(0, 0, ASCII_NUM[int(mins[0])], curses.color_pair(color))
+    big_char_windows[1].addstr(0, 0, ASCII_NUM[int(mins[1])], curses.color_pair(color))
+    big_char_windows[2].addstr(0, 0, ASCII_NUM[int(secs[0])], curses.color_pair(color))
+    big_char_windows[3].addstr(0, 0, ASCII_NUM[int(secs[1])], curses.color_pair(color))
+    for win in big_char_windows.values():
+        win.refresh()
+
+
+def timer_loop(
+    big_char_windows: dict[int, curses.window], start_time: datetime, timer_seconds: int, input_win: curses.window
+) -> int:
+    end_time = start_time + timedelta(seconds=timer_seconds)
+    time_left = end_time - datetime.now()
+    input_win.timeout(0)
     try:
         while True:
+            key = input_win.getch()
+            if key == ord("s"):
+                break
             time_left = end_time - datetime.now()
-            mins = str(int(time_left.seconds / 60))
-            secs = str(int(time_left.seconds % 60))
-            if len(mins) == 1:
-                mins = "0" + mins
-            if len(secs) == 1:
-                secs = "0" + secs
-            big_char_windows[0].addstr(0, 0, ASCII_NUM[int(mins[0])])
-            big_char_windows[1].addstr(0, 0, ASCII_NUM[int(mins[1])])
-            big_char_windows[2].addstr(0, 0, ASCII_NUM[int(secs[0])])
-            big_char_windows[3].addstr(0, 0, ASCII_NUM[int(secs[1])])
-            for win in big_char_windows.values():
-                win.refresh()
-            sleep(1)  # fix this and go off time since start
-    except KeyboardInterrupt:
+            set_time(big_char_windows, time_left.seconds, WORK_COLOR if mode == MODE_WORK else BREAK_COLOR)
+            sleep(1)
+    except KeyboardInterrupt:  # TODO don't need this if s is working to stop it
         pass
+    input_win.timeout(-1)
+    return time_left.seconds
 
 
 def main(stdscr: curses.window):
-    work_minutes = 25
+    global mode
+    seconds = DEFAULT_WORK_SECONDS
 
     stdscr.refresh()
 
@@ -109,7 +129,8 @@ def main(stdscr: curses.window):
 
     # Define color pairs
     curses.init_pair(HEADER_COLOR, curses.COLOR_WHITE, curses.COLOR_BLACK)
-    curses.init_pair(PRODUCT_COLOR, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    curses.init_pair(BREAK_COLOR, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(WORK_COLOR, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(BORDER_COLOR, GRAY, curses.COLOR_BLACK)
 
     # Get screen dimensions
@@ -117,8 +138,17 @@ def main(stdscr: curses.window):
 
     # show_welcome_screen(height, width)
 
-    header = make_header("pomodoro.", ["s start/stop", "w work minutes", "b break minutes"], scn_w)
+    header = make_header(
+        [
+            ("pomodoro.", HEADER_COLOR),
+            ("s start/stop", HEADER_COLOR),
+            ("w work minutes", WORK_COLOR),
+            ("b break minutes", BREAK_COLOR),
+        ],
+        scn_w,
+    )
     big_char_windows = make_timer_window(scn_h, scn_w)
+    set_time(big_char_windows, DEFAULT_WORK_SECONDS, WORK_COLOR)
 
     # Create a window for user input
     input_win = curses.newwin(3, scn_w, scn_h - 3, 0)
@@ -132,23 +162,53 @@ def main(stdscr: curses.window):
         key = stdscr.getch()
         if key == ord("q"):
             break
-        elif key == [ord("s")]:
-            timer_loop(big_char_windows, datetime.now(), work_minutes)
+        elif key == ord("s"):
+            seconds = timer_loop(big_char_windows, datetime.now(), seconds, input_win)
+            if seconds == 0:
+                seconds = DEFAULT_WORK_SECONDS if mode == MODE_WORK else DEFAULT_BREAK_SECONDS
         elif key == ord("w"):
+            mode = MODE_WORK
             input_win.clear()
-            input_win.addstr(1, 2, "How many minutes? ")
+            input_str = f"How many minutes (default {int(DEFAULT_WORK_SECONDS/60)})? "
+            input_win.addstr(1, 2, input_str)
+            input_win.box()  # fix this TODO
             input_win.refresh()
             curses.curs_set(1)
-            work_minutes = stdscr.getstr()
+            curses.echo()
+            try:
+                seconds = int(input_win.getstr(1, 2 + len(input_str), 2).decode(encoding="utf-8")) * 60
+            except Exception:
+                seconds = DEFAULT_WORK_SECONDS
             curses.curs_set(0)
-        elif key in [ord("1"), ord("2"), ord("3")]:
-            product_index = int(chr(key)) - 1
-            timer_win.addstr(scn_h - 7, 2, f"You selected: {products[product_index]['name']}")
-            timer_win.refresh()
-        elif key == ord("d"):
-            del header
-            timer_win.touchwin()
-            timer_win.refresh()
+            curses.noecho()
+            input_win.clear()
+            input_win.box()
+            input_win.addstr(1, 2, "Enter command (q to quit) ")
+            input_win.refresh()
+            set_time(big_char_windows, seconds, WORK_COLOR)
+        elif key == ord("c"):  # continue to other mode
+            pass  # switch mode, proceed as if that button was pressed
+        elif key == ord("b"):
+            mode = MODE_BREAK
+            input_win.clear()
+            input_str = f"How many minutes (default {int(DEFAULT_BREAK_SECONDS/60)})? "
+            input_win.addstr(1, 2, input_str)
+            input_win.box()  # fix this TODO
+            input_win.refresh()
+            curses.curs_set(1)
+            curses.echo()
+            try:
+                seconds = int(input_win.getstr(1, 2 + len(input_str), 2).decode(encoding="utf-8")) * 60
+            except Exception:
+                seconds = DEFAULT_BREAK_SECONDS
+            curses.curs_set(0)
+            curses.noecho()
+            input_win.clear()
+            input_win.box()
+            input_win.addstr(1, 2, "Enter command (q to quit) ")
+            input_win.refresh()
+            set_time(big_char_windows, seconds, BREAK_COLOR)
+
         elif key == ord("h"):
             header = make_header(scn_h, scn_w)
 
