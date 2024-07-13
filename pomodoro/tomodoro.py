@@ -2,7 +2,7 @@ from __future__ import annotations
 import curses
 from enum import Enum, auto
 from time import sleep
-from ascii_numbers import ASCII_NUM
+from pomodoro import ASCII_NUM
 from datetime import datetime, timedelta
 
 HEADER_COLOR = 1
@@ -12,13 +12,13 @@ BORDER_COLOR = 5
 BREAK_COLOR = 3
 WORK_COLOR = 2
 
-DEFAULT_WORK_SECONDS = 25 * 60
-DEFAULT_BREAK_SECONDS = 5 * 60
+DEFAULT_WORK_MINUTES = 25
+DEFAULT_BREAK_MINUTES = 5
 
 
 def make_header(
     options: list[tuple[str, int]], scn_w: int, header_height: int = 3, border_color: int = BORDER_COLOR
-) -> dict[str, curses.window]:
+) -> dict[int, curses.window]:
     """Contruct and display an app header with the provided options. Width of each box is calculated to fit on the
         screen.
 
@@ -33,7 +33,7 @@ def make_header(
         ValueError: "Header too long for screen"
 
     Returns:
-        dict[str, curses.window]: In format {"section text": curses.window (for that section)}
+        dict[int, curses.window]: In format {position: curses.window (for that section)}
     """
     header_length = sum(len(option[0]) + 4 for option in options)
     if header_length > scn_w - 2:
@@ -53,7 +53,7 @@ def make_header(
         section.addstr(1, 2, text, section_format)
         section.refresh()
         cursor += section_width
-        sections[text] = section
+        sections[i] = section
 
     return sections
 
@@ -81,16 +81,13 @@ def show_welcome_screen(message: str, scn_h: int, scn_w: int, speed: float = 0.2
 
 class Timer:
 
-    WORK_COLOR = 2
-    BREAK_COLOR = 3
-
     mode: Mode
     # start_time: datetime
     end_time: datetime
     set_seconds: int
     timer_windows: dict[int, curses.window]
     last_displayed_str: str
-    control_input_window: curses.window
+    cmdwin: CommandWindow
 
     @staticmethod
     def _pad(num: str):
@@ -100,7 +97,7 @@ class Timer:
 
     @property
     def color_pair(self) -> int:
-        color = self.BREAK_COLOR if self.mode == Mode.BREAK else self.WORK_COLOR
+        color = BREAK_COLOR if self.mode == Mode.BREAK else WORK_COLOR
         return curses.color_pair(color)
 
     @property
@@ -127,9 +124,9 @@ class Timer:
                 char_pos_changed.append(i)
         return char_pos_changed
 
-    def __init__(self, control_input_win: curses.window, scn_h: int, scn_w: int, minutes: int = 25) -> None:
+    def __init__(self, cmdwin: CommandWindow, scn_h: int, scn_w: int, minutes: int = 25) -> None:
         self.mode = Mode.WORK
-        self.control_input_window = control_input_win
+        self.cmdwin = cmdwin
         self._make_timer_windows(scn_h=scn_h, scn_w=scn_w, minutes=minutes)
         self.set_timer(minutes=minutes)
         self._refresh_timer_windows(initial=True)
@@ -151,18 +148,18 @@ class Timer:
     def start_timer_loop(self) -> int:
         self.start_time = datetime.now()
         self.end_time = self.start_time + timedelta(seconds=self.set_seconds)
-        self.control_input_window.timeout(0)  # make control input non-blocking
+        self.cmdwin.win.timeout(0)  # make control input non-blocking
         try:
             while True:
-                key = self.control_input_window.getch()
+                key = self.cmdwin.win.getch()
                 if key == ord("s"):
                     break
                 self._refresh_timer_windows()
                 self.set_seconds = self.seconds_left
-                sleep(1)
+                sleep(0.5)
         except KeyboardInterrupt:  # TODO don't need this if s is working to stop it
             pass
-        self.control_input_window.timeout(-1)  # make control input blocking again
+        self.cmdwin.win.timeout(-1)  # make control input blocking again
 
     def _make_timer_windows(self, scn_h: int, scn_w: int, minutes: int) -> dict[int, curses.window]:
         """Construct a border window and windows for each timer character. The border window is not returned
@@ -197,6 +194,26 @@ class Timer:
         }
 
 
+class CommandWindow:
+
+    win: curses.window
+    prompt: str
+
+    def __init__(self, scn_h: int, scn_w: int) -> None:
+        self.win = curses.newwin(3, scn_w, scn_h - 3, 0)
+        self.change_prompt()
+
+    def change_prompt(self, prompt: str = "Select option (q to quit)") -> None:
+        self.prompt = prompt
+        self.win.clear()
+        self.win.box()
+        self.win.addstr(1, 2, prompt)
+        self.win.refresh()
+
+    def getmins(self) -> int:
+        return int(self.win.getstr(1, 2 + len(self.prompt), 2).decode(encoding="utf-8"))
+
+
 def main(stdscr: curses.window):
 
     stdscr.refresh()
@@ -217,75 +234,59 @@ def main(stdscr: curses.window):
 
     header = make_header(
         [
-            ("pomodoro.", HEADER_COLOR),
-            ("s start/stop", HEADER_COLOR),
+            ("tomodoro.", HEADER_COLOR),
+            ("s start", HEADER_COLOR),
             ("w work", WORK_COLOR),
             ("b break", BREAK_COLOR),
         ],
         scn_w,
     )
 
-    # Create a window for user input
-    input_win = curses.newwin(3, scn_w, scn_h - 3, 0)
-    input_win.box()
-    input_win.addstr(1, 2, "Selection option (q to quit): ")
-    input_win.refresh()
-
     stdscr.refresh()
 
-    timer = Timer(control_input_win=input_win, scn_h=scn_h, scn_w=scn_w, minutes=25)
+    # Create a window for user input
+    cmdwin = CommandWindow(scn_h=scn_h, scn_w=scn_w)
+    timer = Timer(cmdwin=cmdwin, scn_h=scn_h, scn_w=scn_w, minutes=25)
 
     while True:
         key = stdscr.getch()
         if key == ord("q"):
             break
         elif key == ord("s"):
+            # header[1].clear()
+            header[1].addstr(1, 2, "s stop ", curses.color_pair(HEADER_COLOR))
+            header[1].refresh()
             timer.start_timer_loop()
+            header[1].addstr(1, 2, "s start", curses.color_pair(HEADER_COLOR))
+            header[1].refresh()  # TODO functionize
         elif key == ord("w"):
             timer.mode = Mode.WORK  # TODO fix
-            input_win.clear()
-            input_str = f"Work minutes [{int(DEFAULT_WORK_SECONDS/60)}]: ? "
-            input_win.addstr(1, 2, input_str)
-            input_win.box()  # fix this TODO
-            input_win.refresh()
+            cmdwin.change_prompt(f"Work minutes [{int(DEFAULT_WORK_MINUTES)}]: ? ")
             curses.curs_set(1)
             curses.echo()
             try:
-                minutes = int(input_win.getstr(1, 2 + len(input_str), 2).decode(encoding="utf-8"))
+                minutes = cmdwin.getmins()
             except Exception:
-                minutes = 25
+                minutes = DEFAULT_WORK_MINUTES
             curses.curs_set(0)
             curses.noecho()
-            input_win.clear()
-            input_win.box()
-            input_win.addstr(1, 2, "Enter command (q to quit) ")
-            input_win.refresh()
+            cmdwin.change_prompt()
             timer.set_timer(minutes=minutes)
         elif key == ord("c"):  # continue to other mode
             pass  # switch mode, proceed as if that button was pressed
         elif key == ord("b"):
-            mode = Mode.BREAK
-            input_win.clear()
-            input_str = f"Break minutes [{int(DEFAULT_WORK_SECONDS/60)}]: ? "
-            input_win.addstr(1, 2, input_str)
-            input_win.box()  # fix this TODO
-            input_win.refresh()
+            timer.mode = Mode.BREAK
+            cmdwin.change_prompt(f"Break minutes [{int(DEFAULT_BREAK_MINUTES)}]: ? ")
             curses.curs_set(1)
             curses.echo()
             try:
-                minutes = int(input_win.getstr(1, 2 + len(input_str), 2).decode(encoding="utf-8"))
+                minutes = cmdwin.getmins()
             except Exception:
-                minutes = 5
+                minutes = DEFAULT_BREAK_MINUTES
             curses.curs_set(0)
             curses.noecho()
-            input_win.clear()
-            input_win.box()
-            input_win.addstr(1, 2, "Enter command (q to quit) ")
-            input_win.refresh()
-            timer.set_timer(minutes=5)
-
-        elif key == ord("h"):
-            header = make_header(scn_h, scn_w)
+            cmdwin.change_prompt()
+            timer.set_timer(minutes=minutes)
 
 
 class Mode(Enum):
