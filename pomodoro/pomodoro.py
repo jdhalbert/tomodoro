@@ -85,7 +85,7 @@ class Timer:
     BREAK_COLOR = 3
 
     mode: Mode
-    start_time: datetime
+    # start_time: datetime
     end_time: datetime
     set_seconds: int
     timer_windows: dict[int, curses.window]
@@ -105,7 +105,7 @@ class Timer:
 
     @property
     def seconds_left(self) -> int:
-        return (self.end_time - self.start_time).seconds
+        return (self.end_time - datetime.now()).seconds
 
     @property
     def mins_str(self) -> str:
@@ -135,9 +135,10 @@ class Timer:
         self._refresh_timer_windows(initial=True)
 
     def set_timer(self, minutes: int):
-        self.set_seconds = minutes * 60
-        self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(minutes=minutes)
+        # self.set_seconds = minutes * 60
+        self.set_seconds = minutes * 60 + 1  # round up
+        self.end_time = datetime.now() + timedelta(seconds=self.set_seconds)
+        self._refresh_timer_windows(initial=True)
 
     def _refresh_timer_windows(self, initial: bool = False) -> None:
         pos_changed = [0, 1, 2, 3] if initial else self._char_pos_changed()
@@ -149,7 +150,7 @@ class Timer:
 
     def start_timer_loop(self) -> int:
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(self.set_seconds)
+        self.end_time = self.start_time + timedelta(seconds=self.set_seconds)
         self.control_input_window.timeout(0)  # make control input non-blocking
         try:
             while True:
