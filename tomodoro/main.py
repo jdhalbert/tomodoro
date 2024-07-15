@@ -2,7 +2,7 @@ from __future__ import annotations
 import curses
 from enum import Enum
 from time import sleep
-from pomodoro import ASCII_NUM
+from tomodoro import ASCII_NUM
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
