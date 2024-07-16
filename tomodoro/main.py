@@ -448,5 +448,9 @@ def main(stdscr: curses.window):
             timer.switch_mode(new_mode=Mode.BREAK)
 
 
-if __name__ == "__main__":
+def run():
     curses.wrapper(main)
+
+
+if __name__ == "__main__":
+    run()
