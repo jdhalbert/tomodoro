@@ -1,3 +1,5 @@
+"""Start program by running this module or with with run()."""
+
 import curses
 
 from tomodoro import colors

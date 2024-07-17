@@ -1,3 +1,5 @@
+"""Text User Interface classes and functions."""
+
 from __future__ import annotations
 
 import curses

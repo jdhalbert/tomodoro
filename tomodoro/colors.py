@@ -1,6 +1,8 @@
-# Custom color codes (see https://www.ditig.com/publications/256-colors-cheat-sheet_)
+"""Curses colors definitions and setup."""
+
 import curses
 
+# Custom color codes (see https://www.ditig.com/publications/256-colors-cheat-sheet_)
 GRAY50 = 244
 
 # Curses color pair numbers
