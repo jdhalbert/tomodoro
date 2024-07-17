@@ -47,6 +47,7 @@ def show_welcome_screen(message: str, scn_h: int, scn_w: int, speed: float = 0.1
 
 @contextmanager
 def echo_and_cursor_on():
+    """Within the context manager, turn on echoing of input to the screen and a blinking cursor."""
     try:
         curses.echo()
         curses.curs_set(1)
@@ -57,6 +58,7 @@ def echo_and_cursor_on():
 
 
 class Timer:
+    """Main timer window including character windows"""
 
     scn_h: int
     scn_w: int
@@ -169,6 +171,12 @@ class Timer:
         self._refresh_timer_windows(initial=True)
 
     def _refresh_timer_windows(self, initial: bool = False) -> None:
+        """Update timer character windows to reflect the current time left. Updates only windows where the
+            character needs to change.
+
+        Args:
+            initial (bool, optional): Set True if setting all four characters for the first time. Defaults to False.
+        """
         pos_changed = [0, 1, 2, 3] if initial else self._char_pos_changed()
         for update_char_pos in pos_changed:
             win = self.timer_windows[update_char_pos]
@@ -270,6 +278,7 @@ class Timer:
 
 
 class CommandWindow:
+    """Window at the bottom of the screen for command input."""
 
     win: curses.window
     prompt: str
@@ -370,7 +379,8 @@ class Header:
             self._restore_defaults()
 
     def _restore_defaults(self) -> None:
-        for i, pair in enumerate(self.orig_options):
+        """Restore the original header."""
+        for i, pair in enumerate(self._orig_options):
             text, color = pair
             self.update_header_section(
                 section_pos=i,
