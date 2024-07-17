@@ -24,15 +24,15 @@ class Mode(Enum):
     WORK = "Work"
 
 
-def show_welcome_screen(message: str, scn_h: int, scn_w: int, speed: float = 0.15, final_sleep: float = 1) -> None:
+def show_welcome_screen(message: str, scn_h: int, scn_w: int, speed: float = 0.15, final_sleep: float = 1.0) -> None:
     """Displays a blank screen and types out the given message character by character with the given time in-between.
 
     Args:
         message (str): App title
         scn_h (int): Screen height
         scn_w (int): Screen width
-        speed (float): Seconds to sleep between printing each character to the screen
-        final_sleep (float): Seconds to sleep after the entire message has been printed
+        speed (float, optional): Seconds to sleep between printing each character to the screen. Defaults to 0.15.
+        final_sleep (float, optional): Seconds to sleep after the entire message has been printed. Defaults to 1.0.
     """
     curses.curs_set(1)  # show a blinking cursor after the message for the cua
     welcome_screen = curses.newwin(1, len(message) + 1, int(scn_h / 2), int(scn_w / 2) - int(len(message) / 2))
@@ -77,7 +77,7 @@ class Timer:
         """Pad a single digit string with a leading zero.
 
         Args:
-            num (str): To pad
+            num (str): Digit to pad
 
         Returns:
             str: Padded string
@@ -156,6 +156,21 @@ class Timer:
         break_color: int = BREAK_COLOR,
         work_color: int = WORK_COLOR,
     ) -> None:
+        """Instantiate.
+
+        Args:
+            cmdwin (CommandWindow): Instantiated CommandWindow object
+            header (Header): Instantiated Header object
+            scn_h (int): Screen height as returned by stdscr.getmaxyx()
+            scn_w (int): Screen width as returned by stdscr.getmaxyx()
+            work_minutes (int, optional): Initial work timer length. Defaults to 25.
+            break_minutes (int, optional): Initial break timer length. Defaults to 5.
+            work_color (int, optional): Work timer curses color pair identifier. Must have already set up with
+                curses.init_pair. Defaults to WORK_COLOR.
+            break_color (int, optional): Break timer curses color pair identifier. Must have already set up with
+                curses.init_pair. Defaults to BREAK_COLOR.
+
+        """
         self.scn_h = scn_h
         self.scn_w = scn_w
         self.cmdwin = cmdwin
@@ -231,8 +246,8 @@ class Timer:
         """Construct a border window for the timer and windows for each timer character.
 
         Args:
-            scn_h (int): Screen height
-            scn_w (int): Screen width
+            scn_h (int): Screen height as returned by stdscr.getmaxyx()
+            scn_w (int): Screen width as returned by stdscr.getmaxyx()
         """
 
         # Create a window for the main content
@@ -285,6 +300,12 @@ class CommandWindow:
     scn_w: int
 
     def __init__(self, scn_h: int, scn_w: int) -> None:
+        """Instantiate.
+
+        Args:
+            scn_h (int): Screen height as returned by stdscr.getmaxyx()
+            scn_w (int): Screen width as returned by stdscr.getmaxyx()
+        """
         self.scn_w = scn_w
         self.win = curses.newwin(3, scn_w, scn_h - 3, 0)
         self._change_prompt()
@@ -459,6 +480,7 @@ def main(stdscr: curses.window):
 
 
 def run():
+    """Wrapper allows running as a script and installation with pipx."""
     curses.wrapper(main)
 
 
