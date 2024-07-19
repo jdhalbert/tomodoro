@@ -36,16 +36,18 @@ def main(stdscr: curses.window):
     cmdwin = CommandWindow(scn_h=scn_h, scn_w=scn_w)
     timer = Timer(cmdwin=cmdwin, header=header, scn_h=scn_h, scn_w=scn_w)
 
+    break_key = None
     while True:
-        key = stdscr.getch()
+        key = break_key if break_key else stdscr.getch()
+        break_key = None
         if key == ord("q"):
             break
         elif key == ord("s"):
             timer.start_timer_loop()
         elif key == ord("w"):
-            timer.switch_mode(new_mode=Mode.WORK)
+            break_key = timer.switch_mode(start=True, new_mode=Mode.WORK)
         elif key == ord("b"):
-            timer.switch_mode(new_mode=Mode.BREAK)
+            break_key = timer.switch_mode(start=True, new_mode=Mode.BREAK)
 
 
 def run():

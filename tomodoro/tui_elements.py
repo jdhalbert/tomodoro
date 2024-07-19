@@ -166,7 +166,6 @@ class Timer:
                 curses.init_pair. Defaults to WORK_COLOR.
             break_color (int, optional): Break timer curses color pair identifier. Must have already set up with
                 curses.init_pair. Defaults to BREAK_COLOR.
-
         """
         self._scn_h = scn_h
         self._scn_w = scn_w
@@ -179,7 +178,7 @@ class Timer:
         }
 
         self._make_timer_windows(scn_h=scn_h, scn_w=scn_w)
-        self.set_timer(minutes=work_minutes)
+        self.set_timer(minutes=work_minutes, start=False)
         self._refresh_timer_windows(initial=True)
 
     def _refresh_timer_windows(self, initial: bool = False) -> None:
@@ -196,24 +195,34 @@ class Timer:
             win.refresh()
         self._last_displayed_time_str = self._timer_str
 
-    def set_timer(self, minutes: int):
+    def set_timer(self, minutes: int, start: bool) -> int | None:
         """Set the timer to given number of minutes and refresh the timer display.
 
         Args:
-            minutes (int)
+            minutes (int): To set on the timer.
+            start (bool): Immediately start the timer.
+
+        Returns:
+            int | None: Propagates from self.start_timer_loop(), if called.
         """
         self._set_seconds = minutes * 60 + 1  # prevent rounding down displayed value due to integer math
         self._end_time = datetime.now() + timedelta(seconds=self._set_seconds)
         self._refresh_timer_windows(initial=True)
+        if start:
+            return self.start_timer_loop()
 
     def _alarm(self) -> None:
         """Alert used to indicate timer has reached zero."""
         print("\a")  # beep
         # TODO - implement flashing screen
 
-    def start_timer_loop(self) -> None:
-        """Start the timer countdown loop. Temporary changes made to visual display while loop runs."""
+    def start_timer_loop(self) -> int | None:
+        """Start the timer countdown loop. Temporary changes made to visual display while loop runs.
 
+        Returns:
+            int | None: If the timer loop is stopped, returns an int corresponding to ord(key_pressed).
+                If the loop ends naturally, returns None.
+        """
         self.start_time = datetime.now()
         self._end_time = self.start_time + timedelta(seconds=self._set_seconds)
 
@@ -228,7 +237,7 @@ class Timer:
                 while True:
                     key = self._cmdwin.win.getch()
                     if key in [ord("s"), ord("w"), ord("b")]:
-                        break
+                        return key
                     self._refresh_timer_windows()
                     self._set_seconds = self._seconds_left
                     if self._set_seconds < 1:
@@ -237,7 +246,7 @@ class Timer:
 
         if self._set_seconds < 1:
             self._alarm()
-            self.switch_mode()
+            self.switch_mode(start=False)
 
     def _make_timer_windows(self, scn_h: int, scn_w: int) -> None:
         """Construct a border window for the timer and windows for each timer character.
@@ -266,12 +275,16 @@ class Timer:
             3: curses.newwin(10, 11, content_y_start, content_x_start + 12 * 3 + 3),
         }
 
-    def switch_mode(self, new_mode: Mode = None) -> None:
+    def switch_mode(self, start: bool, new_mode: Mode = None) -> int | None:
         """Toggle the current mode, or switch to the provided mode. Prompts for user to input or confirm time and
             sets the timer.
 
         Args:
+            start (bool): Start the timer too.
             new_mode (Mode, optional): Mode to switch to. Defaults to None.
+
+        Returns:
+            int | None: Propagates from self.start_timer_loop(), if called.
         """
         if new_mode:
             self._mode = new_mode
@@ -288,7 +301,7 @@ class Timer:
                 except Exception:
                     pass  # no change to current settings if input is invalid
 
-        self.set_timer(minutes=self._mode_properties[self._mode]["minutes"])
+        return self.set_timer(minutes=self._mode_properties[self._mode]["minutes"], start=start)
 
 
 class CommandWindow:
