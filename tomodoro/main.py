@@ -38,12 +38,13 @@ def main(stdscr: curses.window):
 
     break_key = None
     while True:
+        if break_key == ord("s"):
+            break_key = None
         key = break_key if break_key else stdscr.getch()
-        break_key = None
         if key == ord("q"):
             break
         elif key == ord("s"):
-            timer.start_timer_loop()
+            break_key = timer.start_timer_loop()
         elif key == ord("w"):
             break_key = timer.switch_mode(start=True, new_mode=Mode.WORK)
         elif key == ord("b"):
