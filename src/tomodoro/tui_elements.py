@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 TITLE = "tomodoro."
+MAX_MINS = 99
 
 
 @contextmanager
@@ -55,7 +56,7 @@ def show_welcome_screen(message: str, scn_h: int, scn_w: int, speed: float = 0.1
 
 
 class Mode(Enum):
-    """Timer modes"""
+    """Timer modes."""
 
     BREAK = "Break"
     WORK = "Work"
@@ -213,7 +214,7 @@ class Timer:
             win.refresh()
         self._last_displayed_time_str = self._timer_str
 
-    def set_timer(self, minutes: int, start: bool) -> int | None:
+    def set_timer(self, minutes: int, *, start: bool) -> int | None:
         """Set the timer to given number of minutes and refresh the timer display.
 
         Args:
@@ -237,7 +238,7 @@ class Timer:
             os.write(1, b"\a")  # beep
             sys.stdout.flush()
             sleep(0.3)
-        # TODO - implement flashing screen
+        # TODO: - implement flashing screen
 
     def start_timer_loop(self) -> int | None:
         """Start the timer countdown loop.
@@ -252,12 +253,12 @@ class Timer:
         self.start_time = datetime.now(tz=UTC)
         self._end_time = self.start_time + timedelta(seconds=self._set_seconds)
 
-        with self._cmdwin._temp_change(), self._header._temp_change():  # noqa: SLF001
+        with self._cmdwin.temp_change(), self._header.temp_change():
             self._cmdwin.win.timeout(0)  # make control input non-blocking
             self._header.update_header_section(section_pos=1, text="s stop ")
             self._header.update_header_section(section_pos=2, text="w work", text_color=colors.GRAY_COLOR)
             self._header.update_header_section(section_pos=3, text="b break", text_color=colors.GRAY_COLOR)
-            self._cmdwin._change_prompt(prompt=self._mode_properties[self._mode]["cmdwin_prompt"], centered=True)  # noqa: SLF001
+            self._cmdwin.change_prompt(prompt=self._mode_properties[self._mode]["cmdwin_prompt"], centered=True)
 
             while True:
                 key = self._cmdwin.win.getch()
@@ -319,14 +320,14 @@ class Timer:
         else:
             self._mode = Mode.WORK if self._mode == Mode.BREAK else Mode.BREAK
 
-        with self._cmdwin._temp_change():
-            self._cmdwin._change_prompt(
+        with self._cmdwin.temp_change():
+            self._cmdwin.change_prompt(
                 f"{self._mode.value} minutes [{self._mode_properties[self._mode]['minutes']}]: ? ",
             )
             with echo_and_cursor_on():
-                try:
-                    self._mode_properties[self._mode]["minutes"] = self._cmdwin._get_mins()
-                except Exception:
+                try:  # noqa: SIM105
+                    self._mode_properties[self._mode]["minutes"] = self._cmdwin.get_mins()
+                except ValueError:
                     pass  # no change to current settings if input is invalid
 
         return self.set_timer(minutes=self._mode_properties[self._mode]["minutes"], start=start)
@@ -349,18 +350,18 @@ class CommandWindow:
         """
         self.scn_w = scn_w
         self.win = curses.newwin(3, scn_w, scn_h - 3, 0)
-        self._change_prompt()
+        self.change_prompt()
 
     @contextmanager
-    def _temp_change(self):
+    def temp_change(self) -> Generator[None]:
         """Revert the prompt to default and turn on blocking character input on exit."""
         try:
             yield
         finally:
-            self._change_prompt()  # reset prompt
+            self.change_prompt()  # reset prompt
             self.win.timeout(-1)  # set blocking input
 
-    def _change_prompt(self, prompt: str = "Select option (q to quit)", centered: bool = False) -> None:
+    def change_prompt(self, prompt: str = "Select option (q to quit)", *, centered: bool = False) -> None:
         """Change the command window prompt.
 
         Args:
@@ -378,16 +379,19 @@ class CommandWindow:
         self.win.addstr(1, x, prompt, curses.color_pair(colors.DEFAULT_COLOR))
         self.win.refresh()
 
-    def _get_mins(self) -> int:
+    def get_mins(self) -> int:
         """Allow user input to set timer minutes. Defaults to last input.
 
         Returns:
             int: Minutes as input by user
 
         """
-        mins = int(self.win.getstr(1, 2 + len(self.prompt), 2).decode(encoding="utf-8"))
-        if mins > 99:
-            mins = 99
+        try:
+            mins = int(self.win.getstr(1, 2 + len(self.prompt), 2).decode(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError("Invalid value for minutes.") from exc
+        if mins > MAX_MINS:
+            mins = MAX_MINS
         elif mins < 1:
             mins = 1
         return mins
@@ -407,8 +411,9 @@ class Header:
         header_height: int = 3,
         border_color: int = colors.GRAY_COLOR,
     ) -> None:
-        """Contruct and display an app header with the provided options. Width of each box is calculated to fit on the
-            screen.
+        """Contruct and display an app header with the provided options.
+
+        Width of each box is calculated to fit on the screen.
 
         Args:
             options (list[tuple[str, int]]): Tuples of ("header option text", color_pair_identifier). The first option
@@ -440,7 +445,7 @@ class Header:
         self._restore_defaults()
 
     @contextmanager
-    def _temp_change(self):
+    def temp_change(self) -> Generator[None]:
         """Use as a context manager to make a temporary change to the header. Restores defaults on exit."""
         try:
             yield
@@ -465,7 +470,7 @@ class Header:
         text: str,
         text_color: int = colors.DEFAULT_COLOR,
         border_color: int = colors.GRAY_COLOR,
-        a_attrs: int = None,
+        a_attrs: int | None = None,
     ) -> None:
         """Update a single header section. For best results new text should have the same length as the original text.
 
