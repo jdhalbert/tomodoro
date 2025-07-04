@@ -5,7 +5,7 @@ A pomodoro timer in a simple TUI.
 `uvx tomodoro`
 
 ## Controls
-`s`: stop/start
-`w`: work timer
-`b`: break timer
-`q`: quit
+- `s`: stop/start
+- `w`: work timer
+- `b`: break timer
+- `q`: quit

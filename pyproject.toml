@@ -1,6 +1,6 @@
 [project]
 name = "tomodoro"
-version = "0.1.0"
+version = "0.1.2"
 description = "A TUI pomodoro timer with no dependencies."
 readme = "README.md"
 authors = [
