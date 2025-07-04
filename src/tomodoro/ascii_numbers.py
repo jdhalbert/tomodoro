@@ -1,3 +1,6 @@
+"""ASCII numbers for timer display."""
+# ruff: noqa: W291
+
 ASCII_NUM = {
     0: """\
 0000000000

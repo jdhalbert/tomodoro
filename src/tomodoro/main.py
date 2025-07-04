@@ -1,25 +1,23 @@
 """Start program by running this module or with with run()."""
 
 import curses
+import sys
 
-from tomodoro import colors
-from tomodoro.tui_elements import (
-    TITLE,
-    CommandWindow,
-    Header,
-    Mode,
-    Timer,
-    show_welcome_screen,
-)
+from . import colors
+from .tui_elements import TITLE, CommandWindow, Header, Mode, Timer, show_welcome_screen
 
 
-def main(stdscr: curses.window):
+def run(stdscr: curses.window) -> None:
+    """Set up and run tomodoro.
 
+    Args:
+        stdscr (curses.window): Provided by curses.wrapper().
+
+    """
     # curses setup
     stdscr.refresh()
     curses.curs_set(0)
     colors.init_colors()
-
     scn_h, scn_w = stdscr.getmaxyx()
 
     show_welcome_screen(message=TITLE, scn_h=scn_h, scn_w=scn_w)
@@ -42,8 +40,8 @@ def main(stdscr: curses.window):
             break_key = None
         key = break_key if break_key else stdscr.getch()
         if key == ord("q"):
-            break
-        elif key == ord("s"):
+            sys.exit(0)
+        if key == ord("s"):
             break_key = timer.start_timer_loop()
         elif key == ord("w"):
             break_key = timer.switch_mode(start=True, new_mode=Mode.WORK)
@@ -51,10 +49,13 @@ def main(stdscr: curses.window):
             break_key = timer.switch_mode(start=True, new_mode=Mode.BREAK)
 
 
-def run():
-    """Wrapper allows running as a script and installation with pipx."""
-    curses.wrapper(main)
+def main() -> None:
+    """Wrap run().
+
+    Allows running as a script and installation with pipx.
+    """
+    curses.wrapper(run)
 
 
 if __name__ == "__main__":
-    run()
+    main()

@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 import curses
+import os
+import sys
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from time import sleep
+from typing import TYPE_CHECKING
 
-from tomodoro import colors
-from tomodoro.ascii_numbers import ASCII_NUM
+from . import colors
+from .ascii_numbers import ASCII_NUM
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 TITLE = "tomodoro."
 
 
 @contextmanager
-def echo_and_cursor_on():
+def echo_and_cursor_on() -> Generator[None]:
     """Within the context manager, turn on echoing of input to the screen and a blinking cursor."""
     try:
         curses.echo()
@@ -27,7 +33,7 @@ def echo_and_cursor_on():
 
 
 def show_welcome_screen(message: str, scn_h: int, scn_w: int, speed: float = 0.15, final_sleep: float = 1.0) -> None:
-    """Displays a blank screen and types out the given message character by character with the given time in-between.
+    """Display a blank screen and type out the given message character by character with the given time in-between.
 
     Args:
         message (str): App title
@@ -35,6 +41,7 @@ def show_welcome_screen(message: str, scn_h: int, scn_w: int, speed: float = 0.1
         scn_w (int): Screen width
         speed (float, optional): Seconds to sleep between printing each character to the screen. Defaults to 0.15.
         final_sleep (float, optional): Seconds to sleep after the entire message has been printed. Defaults to 1.0.
+
     """
     curses.curs_set(1)  # show a blinking cursor after the message for the cua
     welcome_screen = curses.newwin(1, len(message) + 1, int(scn_h / 2), int(scn_w / 2) - int(len(message) / 2))
@@ -55,7 +62,7 @@ class Mode(Enum):
 
 
 class Timer:
-    """Main timer window including character windows"""
+    """Main timer window including the character windows contained in it."""
 
     _scn_h: int
     _scn_w: int
@@ -78,6 +85,7 @@ class Timer:
 
         Returns:
             str: Padded string
+
         """
         if len(num) == 1:
             return "0" + num
@@ -89,6 +97,7 @@ class Timer:
 
         Returns:
             int: curses color_pair
+
         """
         return curses.color_pair(self._mode_properties[self._mode]["color"])
 
@@ -98,8 +107,9 @@ class Timer:
 
         Returns:
             int: Seconds
+
         """
-        return (self._end_time - datetime.now()).seconds
+        return (self._end_time - datetime.now(tz=UTC)).seconds
 
     @property
     def _mins_str(self) -> str:
@@ -107,6 +117,7 @@ class Timer:
 
         Returns:
             str: Minutes (MM)
+
         """
         return self._pad(str(int(self._seconds_left / 60)))
 
@@ -116,6 +127,7 @@ class Timer:
 
         Returns:
             str: Seconds (SS)
+
         """
         return self._pad(str(int(self._seconds_left % 60)))
 
@@ -125,15 +137,18 @@ class Timer:
 
         Returns:
             str: (MMSS)
+
         """
         return self._mins_str + self._secs_str
 
     def _char_pos_changed(self) -> list[int]:
-        """Get the position numbers of the displayed timer windows that need to be updated to show the new current
-            time. Used to prevent all four timer number positions from being updated every second.
+        """Get the position numbers of the displayed timer windows that need to be updated to show the new current time.
+
+        Prevents all four timer number positions from being updated every second.
 
         Returns:
             list[int]: Timer window position numbers needing refresh
+
         """
         char_pos_changed = []
         current_timer_str = self._timer_str
@@ -166,6 +181,7 @@ class Timer:
                 curses.init_pair. Defaults to WORK_COLOR.
             break_color (int, optional): Break timer curses color pair identifier. Must have already set up with
                 curses.init_pair. Defaults to BREAK_COLOR.
+
         """
         self._scn_h = scn_h
         self._scn_w = scn_w
@@ -181,12 +197,14 @@ class Timer:
         self.set_timer(minutes=work_minutes, start=False)
         self._refresh_timer_windows(initial=True)
 
-    def _refresh_timer_windows(self, initial: bool = False) -> None:
-        """Update timer character windows to reflect the current time left. Updates only windows where the
-            character needs to change.
+    def _refresh_timer_windows(self, *, initial: bool = False) -> None:
+        """Update timer character windows to reflect the current time left.
+
+        Updates only windows where the character needs to change.
 
         Args:
             initial (bool, optional): Set True if setting all four characters for the first time. Defaults to False.
+
         """
         pos_changed = [0, 1, 2, 3] if initial else self._char_pos_changed()
         for update_char_pos in pos_changed:
@@ -204,49 +222,57 @@ class Timer:
 
         Returns:
             int | None: Propagates from self.start_timer_loop(), if called.
+
         """
         self._set_seconds = minutes * 60 + 1  # prevent rounding down displayed value due to integer math
-        self._end_time = datetime.now() + timedelta(seconds=self._set_seconds)
+        self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
         self._refresh_timer_windows(initial=True)
         if start:
             return self.start_timer_loop()
+        return None
 
     def _alarm(self) -> None:
         """Alert used to indicate timer has reached zero."""
-        print("\a")  # beep
+        for _ in range(5):
+            os.write(1, b"\a")  # beep
+            sys.stdout.flush()
+            sleep(0.3)
         # TODO - implement flashing screen
 
     def start_timer_loop(self) -> int | None:
-        """Start the timer countdown loop. Temporary changes made to visual display while loop runs.
+        """Start the timer countdown loop.
+
+        Temporary changes made to visual display while loop runs.
 
         Returns:
             int | None: If the timer loop is stopped, returns an int corresponding to ord(key_pressed).
                 If the loop ends naturally, returns None.
+
         """
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(tz=UTC)
         self._end_time = self.start_time + timedelta(seconds=self._set_seconds)
 
-        with self._cmdwin._temp_change():
-            with self._header._temp_change():
-                self._cmdwin.win.timeout(0)  # make control input non-blocking
-                self._header.update_header_section(section_pos=1, text="s stop ")
-                self._header.update_header_section(section_pos=2, text="w work", text_color=colors.GRAY_COLOR)
-                self._header.update_header_section(section_pos=3, text="b break", text_color=colors.GRAY_COLOR)
-                self._cmdwin._change_prompt(prompt=self._mode_properties[self._mode]["cmdwin_prompt"], centered=True)
+        with self._cmdwin._temp_change(), self._header._temp_change():  # noqa: SLF001
+            self._cmdwin.win.timeout(0)  # make control input non-blocking
+            self._header.update_header_section(section_pos=1, text="s stop ")
+            self._header.update_header_section(section_pos=2, text="w work", text_color=colors.GRAY_COLOR)
+            self._header.update_header_section(section_pos=3, text="b break", text_color=colors.GRAY_COLOR)
+            self._cmdwin._change_prompt(prompt=self._mode_properties[self._mode]["cmdwin_prompt"], centered=True)  # noqa: SLF001
 
-                while True:
-                    key = self._cmdwin.win.getch()
-                    if key in [ord("s"), ord("w"), ord("b")]:
-                        return key
-                    self._refresh_timer_windows()
-                    self._set_seconds = self._seconds_left
-                    if self._set_seconds < 1:
-                        break
-                    sleep(0.5)
+            while True:
+                key = self._cmdwin.win.getch()
+                if key in [ord("s"), ord("w"), ord("b")]:
+                    return key
+                self._refresh_timer_windows()
+                self._set_seconds = self._seconds_left
+                if self._set_seconds < 1:
+                    break
+                sleep(0.5)
 
         if self._set_seconds < 1:
             self._alarm()
-            self.switch_mode(start=False)
+            self.switch_mode(start=True)
+        return None
 
     def _make_timer_windows(self, scn_h: int, scn_w: int) -> None:
         """Construct a border window for the timer and windows for each timer character.
@@ -254,8 +280,8 @@ class Timer:
         Args:
             scn_h (int): Screen height as returned by stdscr.getmaxyx()
             scn_w (int): Screen width as returned by stdscr.getmaxyx()
-        """
 
+        """
         # Create a window for the main content
         timer_window_height = scn_h - 6
         content_width = 11 * 4 + 2 * 3 + 1  # four characters @ 11 width/ea, three spaces between, one color
@@ -275,9 +301,10 @@ class Timer:
             3: curses.newwin(10, 11, content_y_start, content_x_start + 12 * 3 + 3),
         }
 
-    def switch_mode(self, start: bool, new_mode: Mode = None) -> int | None:
-        """Toggle the current mode, or switch to the provided mode. Prompts for user to input or confirm time and
-            sets the timer.
+    def switch_mode(self, *, start: bool, new_mode: Mode = None) -> int | None:
+        """Toggle the current mode or switch to the provided mode.
+
+        Prompts for user to input or confirm time and sets the timer.
 
         Args:
             start (bool): Start the timer too.
@@ -285,6 +312,7 @@ class Timer:
 
         Returns:
             int | None: Propagates from self.start_timer_loop(), if called.
+
         """
         if new_mode:
             self._mode = new_mode
@@ -293,7 +321,7 @@ class Timer:
 
         with self._cmdwin._temp_change():
             self._cmdwin._change_prompt(
-                f"{self._mode.value} minutes [{self._mode_properties[self._mode]['minutes']}]: ? "
+                f"{self._mode.value} minutes [{self._mode_properties[self._mode]['minutes']}]: ? ",
             )
             with echo_and_cursor_on():
                 try:
@@ -317,6 +345,7 @@ class CommandWindow:
         Args:
             scn_h (int): Screen height as returned by stdscr.getmaxyx()
             scn_w (int): Screen width as returned by stdscr.getmaxyx()
+
         """
         self.scn_w = scn_w
         self.win = curses.newwin(3, scn_w, scn_h - 3, 0)
@@ -337,6 +366,7 @@ class CommandWindow:
         Args:
             prompt (str, optional): Text of new prompt. Defaults to "Select option (q to quit)".
             centered (bool, optional): Center the prompt in the command window. Defaults to False.
+
         """
         self.prompt = prompt
         self.win.clear()
@@ -353,6 +383,7 @@ class CommandWindow:
 
         Returns:
             int: Minutes as input by user
+
         """
         mins = int(self.win.getstr(1, 2 + len(self.prompt), 2).decode(encoding="utf-8"))
         if mins > 99:
@@ -370,7 +401,11 @@ class Header:
     _orig_border_color: int
 
     def __init__(
-        self, options: list[tuple[str, int]], scn_w: int, header_height: int = 3, border_color: int = colors.GRAY_COLOR
+        self,
+        options: list[tuple[str, int]],
+        scn_w: int,
+        header_height: int = 3,
+        border_color: int = colors.GRAY_COLOR,
     ) -> None:
         """Contruct and display an app header with the provided options. Width of each box is calculated to fit on the
             screen.
@@ -384,6 +419,7 @@ class Header:
 
         Raises:
             ValueError: Header too long for screen
+
         """
         header_length = sum(len(option[0]) + 4 for option in options)
         if header_length > scn_w - 2:
@@ -439,6 +475,7 @@ class Header:
             text_color (int, optional): Defaults to DEFAULT_COLOR.
             border_color (int, optional): Defaults to GRAY_COLOR.
             a_attrs (int, optional): Additional curses.A_* attributes to merge in. Defaults to None.
+
         """
         section = self._sections[section_pos]
         section.clear()

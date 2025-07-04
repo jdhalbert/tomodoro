@@ -13,7 +13,7 @@ GRAY_COLOR = 4
 WHITE_COLOR = 5
 
 
-def init_colors():
+def init_colors() -> None:
     """Set up curses color pairs."""
     curses.init_pair(DEFAULT_COLOR, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.init_pair(WORK_COLOR, curses.COLOR_RED, curses.COLOR_BLACK)
