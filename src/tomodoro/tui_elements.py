@@ -5,6 +5,7 @@ from __future__ import annotations
 import curses
 import os
 import sys
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 
 TITLE = "tomodoro."
 MAX_MINS = 99
+CHARACTER_SIZE = 11
 
 
 @contextmanager
@@ -193,26 +195,29 @@ class Timer:
             Mode.BREAK: {"minutes": break_minutes, "color": break_color, "cmdwin_prompt": "On break..."},
             Mode.WORK: {"minutes": work_minutes, "color": work_color, "cmdwin_prompt": "Working..."},
         }
+        self._timer_border_window = None
+        self._timer_windows = None
 
-        self._make_timer_windows(scn_h=scn_h, scn_w=scn_w)
+        self.redraw_timer_windows(scn_h=scn_h, scn_w=scn_w)
         self.set_timer(minutes=work_minutes, start=False)
-        self._refresh_timer_windows(initial=True)
+        self.refresh_timer_windows(refresh_all=True)
 
-    def _refresh_timer_windows(self, *, initial: bool = False) -> None:
+    def refresh_timer_windows(self, *, refresh_all: bool = False) -> None:
         """Update timer character windows to reflect the current time left.
 
         Updates only windows where the character needs to change.
 
         Args:
-            initial (bool, optional): Set True if setting all four characters for the first time. Defaults to False.
+            refresh_all (bool, optional): Set True if setting all four characters for the first time. Defaults to False.
 
         """
-        pos_changed = [0, 1, 2, 3] if initial else self._char_pos_changed()
+        pos_changed = [0, 1, 2, 3] if refresh_all else self._char_pos_changed()
         for update_char_pos in pos_changed:
             win = self._timer_windows[update_char_pos]
             win.addstr(0, 0, ASCII_NUM[int(self._timer_str[update_char_pos])], self._mode_color_pair)
-            win.refresh()
+            win.noutrefresh()  # update virtual screen for each character
         self._last_displayed_time_str = self._timer_str
+        curses.doupdate()  # update physical screen
 
     def set_timer(self, minutes: int, *, start: bool) -> int | None:
         """Set the timer to given number of minutes and refresh the timer display.
@@ -226,11 +231,14 @@ class Timer:
 
         """
         self._set_seconds = minutes * 60 + 1  # prevent rounding down displayed value due to integer math
-        self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
-        self._refresh_timer_windows(initial=True)
+        self.reset_end_time()
+        self.refresh_timer_windows(refresh_all=True)
         if start:
             return self.start_timer_loop()
         return None
+
+    def reset_end_time(self):
+        self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
 
     def _alarm(self) -> None:
         """Alert used to indicate timer has reached zero."""
@@ -238,9 +246,10 @@ class Timer:
             os.write(1, b"\a")  # beep
             sys.stdout.flush()
             sleep(0.3)
+            # TODO: add non-blocking getch so user can interrupt this
         # TODO: - implement flashing screen
 
-    def start_timer_loop(self) -> int | None:
+    def start_timer_loop(self, check_and_refresh_all: Callable) -> int | None:
         """Start the timer countdown loop.
 
         Temporary changes made to visual display while loop runs.
@@ -250,8 +259,7 @@ class Timer:
                 If the loop ends naturally, returns None.
 
         """
-        self.start_time = datetime.now(tz=UTC)
-        self._end_time = self.start_time + timedelta(seconds=self._set_seconds)
+        self.reset_end_time()
 
         with self._cmdwin.temp_change(), self._header.temp_change():
             self._cmdwin.win.timeout(0)  # make control input non-blocking
@@ -264,10 +272,16 @@ class Timer:
                 key = self._cmdwin.win.getch()
                 if key in [ord("s"), ord("w"), ord("b")]:
                     return key
-                self._refresh_timer_windows()
+
+                if key == curses.KEY_RESIZE:
+                    check_and_refresh_all()
+                else:
+                    self.refresh_timer_windows()
+
                 self._set_seconds = self._seconds_left
                 if self._set_seconds < 1:
                     break
+                curses.doupdate()
                 sleep(0.5)
 
         if self._set_seconds < 1:
@@ -275,32 +289,41 @@ class Timer:
             self.switch_mode(start=True)
         return None
 
-    def _make_timer_windows(self, scn_h: int, scn_w: int) -> None:
-        """Construct a border window for the timer and windows for each timer character.
-
-        Args:
-            scn_h (int): Screen height as returned by stdscr.getmaxyx()
-            scn_w (int): Screen width as returned by stdscr.getmaxyx()
-
-        """
+    def redraw_timer_windows(self, scn_h: int | None = None, scn_w: int | None = None):
         # Create a window for the main content
-        timer_window_height = scn_h - 6
-        content_width = 11 * 4 + 2 * 3 + 1  # four characters @ 11 width/ea, three spaces between, one color
-        content_height = 11
+        self._scn_h = scn_h if scn_h else self._scn_h
+        self._scn_w = scn_w if scn_w else self._scn_w
+        timer_window_height = self._scn_h - 6
+        content_width = CHARACTER_SIZE * 4 + 2 * 3 + 1  # four characters , three spaces between each, one color
+        content_height = CHARACTER_SIZE
         content_y_start = int((timer_window_height - content_height) / 2) + 3  # centered under header
-        content_x_start = int((scn_w - content_width) / 2)
+        content_x_start = int((self._scn_w - content_width) / 2)
 
-        self._timer_border_window = curses.newwin(timer_window_height, scn_w, 3, 0)
+        if self._timer_border_window:
+            self._timer_border_window.clear()
+            self._timer_border_window.noutrefresh()
+
+        self._timer_border_window = curses.newwin(timer_window_height, self._scn_w, 3, 0)
         self._timer_border_window.bkgd(curses.color_pair(colors.GRAY_COLOR))
         self._timer_border_window.box()
-        self._timer_border_window.refresh()
+        self._timer_border_window.noutrefresh()
+
+        # TODO: clear and noutrefresh all existing windows  if exists
+
+        if self._timer_windows:
+            for window in self._timer_windows.values():
+                window.clear()
+                window.noutrefresh()
 
         self._timer_windows = {
-            0: curses.newwin(10, 11, content_y_start, content_x_start),
-            1: curses.newwin(10, 11, content_y_start, content_x_start + 12),
-            2: curses.newwin(10, 11, content_y_start, content_x_start + 12 * 2 + 3),
-            3: curses.newwin(10, 11, content_y_start, content_x_start + 12 * 3 + 3),
+            0: curses.newwin(10, CHARACTER_SIZE, content_y_start, content_x_start),
+            1: curses.newwin(10, CHARACTER_SIZE, content_y_start, content_x_start + 12),
+            2: curses.newwin(10, CHARACTER_SIZE, content_y_start, content_x_start + 12 * 2 + 3),
+            3: curses.newwin(10, CHARACTER_SIZE, content_y_start, content_x_start + 12 * 3 + 3),
         }
+
+        # self.refresh_timer_windows(refresh_all=True)
+        # self._reset_end_time()
 
     def switch_mode(self, *, start: bool, new_mode: Mode = None) -> int | None:
         """Toggle the current mode or switch to the provided mode.
@@ -350,16 +373,18 @@ class CommandWindow:
         """
         self.scn_w = scn_w
         self.win = curses.newwin(3, scn_w, scn_h - 3, 0)
+        self.redraw(scn_h=scn_h, scn_w=scn_w)
         self.change_prompt()
 
-    @contextmanager
-    def temp_change(self) -> Generator[None]:
-        """Revert the prompt to default and turn on blocking character input on exit."""
-        try:
-            yield
-        finally:
-            self.change_prompt()  # reset prompt
-            self.win.timeout(-1)  # set blocking input
+    def redraw(self, scn_h=None, scn_w=None):
+        self.scn_h = scn_h if scn_h else self.scn_h
+        self.scn_w = scn_w if scn_w else self.scn_w
+
+        if self.win:
+            self.win.clear()
+            self.win.noutrefresh()
+            # del self.win
+        self.win = curses.newwin(3, self.scn_w, self.scn_h - 3, 0)
 
     def change_prompt(self, prompt: str = "Select option (q to quit)", *, centered: bool = False) -> None:
         """Change the command window prompt.
@@ -370,14 +395,25 @@ class CommandWindow:
 
         """
         self.prompt = prompt
+        self.centered = centered
+        self.update()
+
+    def update(self):
         self.win.clear()
         self.win.bkgd(curses.color_pair(colors.GRAY_COLOR))
         self.win.box()
-        x = 2
-        if centered:
-            x = int((self.scn_w - len(prompt)) / 2)
-        self.win.addstr(1, x, prompt, curses.color_pair(colors.DEFAULT_COLOR))
-        self.win.refresh()
+        x_coord = int((self.scn_w - len(self.prompt)) / 2) if self.centered else 2
+        self.win.addstr(1, x_coord, self.prompt, curses.color_pair(colors.DEFAULT_COLOR))
+        self.win.noutrefresh()
+
+    @contextmanager
+    def temp_change(self) -> Generator[None]:
+        """Revert the prompt to default and turn on blocking character input on exit."""
+        try:
+            yield
+        finally:
+            self.change_prompt()  # reset prompt
+            self.win.timeout(-1)  # set blocking input
 
     def get_mins(self) -> int:
         """Allow user input to set timer minutes. Defaults to last input.
@@ -464,6 +500,10 @@ class Header:
                 a_attrs=curses.A_BOLD if i == 0 else None,
             )
 
+    def refresh_all_sections(self):
+        for section in self._sections.values():
+            section.noutrefresh()
+
     def update_header_section(
         self,
         section_pos: int,
@@ -490,4 +530,4 @@ class Header:
         if a_attrs:
             attrs = attrs | a_attrs
         section.addstr(1, 2, text, attrs)
-        section.refresh()
+        section.noutrefresh()

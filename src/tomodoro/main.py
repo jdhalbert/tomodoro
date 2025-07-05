@@ -34,6 +34,19 @@ def run(stdscr: curses.window) -> None:
     cmdwin = CommandWindow(scn_h=scn_h, scn_w=scn_w)
     timer = Timer(cmdwin=cmdwin, header=header, scn_h=scn_h, scn_w=scn_w)
 
+    def check_and_refresh_all():
+        if (scn_h, scn_w) != stdscr.getmaxyx():
+            # stdscr.clear()
+            # header.refresh_all_sections()
+            # timer.refresh_timer_windows(*stdscr.getmaxyx(), refresh_all=True)
+            timer.reset_end_time()
+            timer.redraw_timer_windows(*stdscr.getmaxyx())
+            timer.refresh_timer_windows(refresh_all=True)
+            cmdwin.redraw(*stdscr.getmaxyx())
+            cmdwin.update()
+            # stdscr.resize(*stdscr.getmaxyx())
+            # stdscr.refresh()
+
     break_key = None
     while True:
         if break_key == ord("s"):
@@ -42,11 +55,14 @@ def run(stdscr: curses.window) -> None:
         if key == ord("q"):
             sys.exit(0)
         if key == ord("s"):
-            break_key = timer.start_timer_loop()
+            break_key = timer.start_timer_loop(check_and_refresh_all=check_and_refresh_all)
         elif key == ord("w"):
             break_key = timer.switch_mode(start=True, new_mode=Mode.WORK)
         elif key == ord("b"):
             break_key = timer.switch_mode(start=True, new_mode=Mode.BREAK)
+        elif key == curses.KEY_RESIZE:
+            check_and_refresh_all()
+            break_key = None
 
 
 def main() -> None:
