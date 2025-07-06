@@ -37,9 +37,8 @@ def run(stdscr: curses.window) -> None:
     def check_and_refresh_all():
         if (scn_h, scn_w) != stdscr.getmaxyx():
             # stdscr.clear()
-            # header.refresh_all_sections()
+            header.refresh_all_sections()
             # timer.refresh_timer_windows(*stdscr.getmaxyx(), refresh_all=True)
-            timer.reset_end_time()
             timer.redraw_timer_windows(*stdscr.getmaxyx())
             timer.refresh_timer_windows(refresh_all=True)
             cmdwin.redraw(*stdscr.getmaxyx())
@@ -57,12 +56,15 @@ def run(stdscr: curses.window) -> None:
         if key == ord("s"):
             break_key = timer.start_timer_loop(check_and_refresh_all=check_and_refresh_all)
         elif key == ord("w"):
-            break_key = timer.switch_mode(start=True, new_mode=Mode.WORK)
+            timer.switch_mode(new_mode=Mode.WORK)
+            break_key = timer.start_timer_loop(check_and_refresh_all=check_and_refresh_all)
         elif key == ord("b"):
-            break_key = timer.switch_mode(start=True, new_mode=Mode.BREAK)
+            timer.switch_mode(new_mode=Mode.BREAK)
+            break_key = timer.start_timer_loop(check_and_refresh_all=check_and_refresh_all)
         elif key == curses.KEY_RESIZE:
             check_and_refresh_all()
             break_key = None
+        curses.doupdate()  # TODO move?
 
 
 def main() -> None:

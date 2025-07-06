@@ -64,6 +64,88 @@ class Mode(Enum):
     WORK = "Work"
 
 
+class TimeKeeper:
+    _set_seconds: int
+    _end_time: datetime
+    _running: bool
+
+    @staticmethod
+    def _pad(num: str) -> str:
+        """Pad a single digit string with a leading zero.
+
+        Args:
+            num (str): Digit to pad
+
+        Returns:
+            str: Padded string
+
+        """
+        if len(num) == 1:
+            return "0" + num
+        return num
+
+    def __init__(self, set_seconds: int):
+        self.set_time(set_seconds=set_seconds)
+        # self._reset_end_time()
+
+    # def _reset_end_time(self):
+    # self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
+
+    @property
+    def seconds_left(self) -> int:
+        """Seconds between now and the timer's end time.
+
+        Returns:
+            int: Seconds
+
+        """
+        if not self._running:  # reset the end time
+            return self._set_seconds
+        return (self._end_time - datetime.now(tz=UTC)).seconds
+
+    @property
+    def _mins_str(self) -> str:
+        """Two-digit timer display minutes.
+
+        Returns:
+            str: Minutes (MM)
+
+        """
+        return self._pad(str(int(self.seconds_left / 60)))
+
+    @property
+    def _secs_str(self) -> str:
+        """Two-digit timer display seconds.
+
+        Returns:
+            str: Seconds (SS)
+
+        """
+        return self._pad(str(int(self.seconds_left % 60)))
+
+    @property
+    def timer_str(self) -> str:
+        """Full four-digit timer display.
+
+        Returns:
+            str: (MMSS)
+
+        """
+        return self._mins_str + self._secs_str
+
+    def start(self):
+        self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
+        self._running = True
+
+    def stop(self):
+        self._set_seconds = self.seconds_left
+        self._running = False
+
+    def set_time(self, set_seconds: int):
+        self._running = False
+        self._set_seconds = set_seconds
+
+
 class Timer:
     """Main timer window including the character windows contained in it."""
 
@@ -78,85 +160,6 @@ class Timer:
 
     _last_displayed_time_str: str
     _timekeeper: TimeKeeper
-
-    class TimeKeeper:
-        _set_seconds: int
-        _end_time: datetime
-        _running: bool
-
-        @staticmethod
-        def _pad(num: str) -> str:
-            """Pad a single digit string with a leading zero.
-
-            Args:
-                num (str): Digit to pad
-
-            Returns:
-                str: Padded string
-
-            """
-            if len(num) == 1:
-                return "0" + num
-            return num
-
-        def __init__(self, set_seconds: int):
-            self.set_time(set_seconds=set_seconds)
-            # self._reset_end_time()
-
-        # def _reset_end_time(self):
-        # self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
-
-        @property
-        def seconds_left(self) -> int:
-            """Seconds between now and the timer's end time.
-
-            Returns:
-                int: Seconds
-
-            """
-            if not self._running:  # reset the end time
-                self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
-            return (self._end_time - datetime.now(tz=UTC)).seconds
-
-        @property
-        def _mins_str(self) -> str:
-            """Two-digit timer display minutes.
-
-            Returns:
-                str: Minutes (MM)
-
-            """
-            return self._pad(str(int(self.seconds_left / 60)))
-
-        @property
-        def _secs_str(self) -> str:
-            """Two-digit timer display seconds.
-
-            Returns:
-                str: Seconds (SS)
-
-            """
-            return self._pad(str(int(self.seconds_left % 60)))
-
-        @property
-        def timer_str(self) -> str:
-            """Full four-digit timer display.
-
-            Returns:
-                str: (MMSS)
-
-            """
-            return self._mins_str + self._secs_str
-
-        def start(self):
-            self._running = True
-
-        def stop(self):
-            self._running = False
-
-        def set_time(self, set_seconds: int):
-            self.stop()
-            self._set_seconds = set_seconds
 
     @property
     def _mode_color_pair(self) -> int:
@@ -178,7 +181,7 @@ class Timer:
 
         """
         char_pos_changed = []
-        current_timer_str = self._timer_str
+        current_timer_str = self._timekeeper.timer_str
         for i, last_char in enumerate(self._last_displayed_time_str):
             if current_timer_str[i] != last_char:
                 char_pos_changed.append(i)
@@ -223,7 +226,7 @@ class Timer:
         self._timer_windows = None
 
         self.redraw_timer_windows(scn_h=scn_h, scn_w=scn_w)
-        self.set_timer(minutes=work_minutes, start=False)
+        self.set_timer(minutes=work_minutes)
         self.refresh_timer_windows(refresh_all=True)
 
     def refresh_timer_windows(self, *, refresh_all: bool = False) -> None:
@@ -243,7 +246,7 @@ class Timer:
         self._last_displayed_time_str = self._timekeeper.timer_str
         curses.doupdate()  # update physical screen
 
-    def set_timer(self, minutes: int, *, start: bool) -> int | None:
+    def set_timer(self, minutes: int) -> int | None:
         """Set the timer to given number of minutes and refresh the timer display.
 
         Args:
@@ -254,13 +257,9 @@ class Timer:
             int | None: Propagates from self.start_timer_loop(), if called.
 
         """
-        self._timekeeper.set_time(
-            set_seconds=minutes * 60 + 1,
-        )  # prevent rounding down displayed value due to integer math TODO move logic
+        # prevent rounding down displayed value due to integer math TODO move logic
+        self._timekeeper = TimeKeeper(set_seconds=minutes * 60 + 1)
         self.refresh_timer_windows(refresh_all=True)
-        if start:
-            return self.start_timer_loop()
-        return None
 
     def _alarm(self) -> None:
         """Alert used to indicate timer has reached zero."""
@@ -293,6 +292,7 @@ class Timer:
             while True:
                 key = self._cmdwin.win.getch()
                 if key in [ord("s"), ord("w"), ord("b")]:
+                    self._timekeeper.stop()
                     return key
 
                 if key == curses.KEY_RESIZE:
@@ -303,12 +303,12 @@ class Timer:
                 # self._set_seconds = self._seconds_left
                 if self._timekeeper.seconds_left < 1:
                     break
-                curses.doupdate()
+                # curses.doupdate()  # TODO: this needed?
                 sleep(0.5)
 
         if self._timekeeper.seconds_left < 1:
             self._alarm()
-            self.switch_mode(start=True)
+            self.switch_mode()
         return None
 
     def redraw_timer_windows(self, scn_h: int | None = None, scn_w: int | None = None):
@@ -347,7 +347,7 @@ class Timer:
         # self.refresh_timer_windows(refresh_all=True)
         # self._reset_end_time()
 
-    def switch_mode(self, *, start: bool, new_mode: Mode = None) -> int | None:
+    def switch_mode(self, new_mode: Mode = None) -> None:
         """Toggle the current mode or switch to the provided mode.
 
         Prompts for user to input or confirm time and sets the timer.
@@ -375,7 +375,7 @@ class Timer:
                 except ValueError:
                     pass  # no change to current settings if input is invalid
 
-        return self.set_timer(minutes=self._mode_properties[self._mode]["minutes"], start=start)
+        self.set_timer(minutes=self._mode_properties[self._mode]["minutes"])
 
 
 class CommandWindow:
