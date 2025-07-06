@@ -71,28 +71,92 @@ class Timer:
     _scn_w: int
     _mode: Mode
     _mode_properties: dict[Mode, dict[str, int]]
-    _end_time: datetime
-    _set_seconds: int
-    _last_displayed_time_str: str
     _cmdwin: CommandWindow
     _header: Header
     _timer_border_window: curses.window
     _timer_windows: dict[int, curses.window]
 
-    @staticmethod
-    def _pad(num: str) -> str:
-        """Pad a single digit string with a leading zero.
+    _last_displayed_time_str: str
+    _timekeeper: TimeKeeper
 
-        Args:
-            num (str): Digit to pad
+    class TimeKeeper:
+        _set_seconds: int
+        _end_time: datetime
+        _running: bool
 
-        Returns:
-            str: Padded string
+        @staticmethod
+        def _pad(num: str) -> str:
+            """Pad a single digit string with a leading zero.
 
-        """
-        if len(num) == 1:
-            return "0" + num
-        return num
+            Args:
+                num (str): Digit to pad
+
+            Returns:
+                str: Padded string
+
+            """
+            if len(num) == 1:
+                return "0" + num
+            return num
+
+        def __init__(self, set_seconds: int):
+            self.set_time(set_seconds=set_seconds)
+            # self._reset_end_time()
+
+        # def _reset_end_time(self):
+        # self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
+
+        @property
+        def seconds_left(self) -> int:
+            """Seconds between now and the timer's end time.
+
+            Returns:
+                int: Seconds
+
+            """
+            if not self._running:  # reset the end time
+                self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
+            return (self._end_time - datetime.now(tz=UTC)).seconds
+
+        @property
+        def _mins_str(self) -> str:
+            """Two-digit timer display minutes.
+
+            Returns:
+                str: Minutes (MM)
+
+            """
+            return self._pad(str(int(self.seconds_left / 60)))
+
+        @property
+        def _secs_str(self) -> str:
+            """Two-digit timer display seconds.
+
+            Returns:
+                str: Seconds (SS)
+
+            """
+            return self._pad(str(int(self.seconds_left % 60)))
+
+        @property
+        def timer_str(self) -> str:
+            """Full four-digit timer display.
+
+            Returns:
+                str: (MMSS)
+
+            """
+            return self._mins_str + self._secs_str
+
+        def start(self):
+            self._running = True
+
+        def stop(self):
+            self._running = False
+
+        def set_time(self, set_seconds: int):
+            self.stop()
+            self._set_seconds = set_seconds
 
     @property
     def _mode_color_pair(self) -> int:
@@ -103,46 +167,6 @@ class Timer:
 
         """
         return curses.color_pair(self._mode_properties[self._mode]["color"])
-
-    @property
-    def _seconds_left(self) -> int:
-        """Seconds between now and the timer's end time.
-
-        Returns:
-            int: Seconds
-
-        """
-        return (self._end_time - datetime.now(tz=UTC)).seconds
-
-    @property
-    def _mins_str(self) -> str:
-        """Two-digit timer display minutes.
-
-        Returns:
-            str: Minutes (MM)
-
-        """
-        return self._pad(str(int(self._seconds_left / 60)))
-
-    @property
-    def _secs_str(self) -> str:
-        """Two-digit timer display seconds.
-
-        Returns:
-            str: Seconds (SS)
-
-        """
-        return self._pad(str(int(self._seconds_left % 60)))
-
-    @property
-    def _timer_str(self) -> str:
-        """Full four-digit timer display.
-
-        Returns:
-            str: (MMSS)
-
-        """
-        return self._mins_str + self._secs_str
 
     def _char_pos_changed(self) -> list[int]:
         """Get the position numbers of the displayed timer windows that need to be updated to show the new current time.
@@ -214,9 +238,9 @@ class Timer:
         pos_changed = [0, 1, 2, 3] if refresh_all else self._char_pos_changed()
         for update_char_pos in pos_changed:
             win = self._timer_windows[update_char_pos]
-            win.addstr(0, 0, ASCII_NUM[int(self._timer_str[update_char_pos])], self._mode_color_pair)
+            win.addstr(0, 0, ASCII_NUM[int(self._timekeeper.timer_str[update_char_pos])], self._mode_color_pair)
             win.noutrefresh()  # update virtual screen for each character
-        self._last_displayed_time_str = self._timer_str
+        self._last_displayed_time_str = self._timekeeper.timer_str
         curses.doupdate()  # update physical screen
 
     def set_timer(self, minutes: int, *, start: bool) -> int | None:
@@ -230,15 +254,13 @@ class Timer:
             int | None: Propagates from self.start_timer_loop(), if called.
 
         """
-        self._set_seconds = minutes * 60 + 1  # prevent rounding down displayed value due to integer math
-        self.reset_end_time()
+        self._timekeeper.set_time(
+            set_seconds=minutes * 60 + 1,
+        )  # prevent rounding down displayed value due to integer math TODO move logic
         self.refresh_timer_windows(refresh_all=True)
         if start:
             return self.start_timer_loop()
         return None
-
-    def reset_end_time(self):
-        self._end_time = datetime.now(tz=UTC) + timedelta(seconds=self._set_seconds)
 
     def _alarm(self) -> None:
         """Alert used to indicate timer has reached zero."""
@@ -259,7 +281,7 @@ class Timer:
                 If the loop ends naturally, returns None.
 
         """
-        self.reset_end_time()
+        self._timekeeper.start()
 
         with self._cmdwin.temp_change(), self._header.temp_change():
             self._cmdwin.win.timeout(0)  # make control input non-blocking
@@ -278,13 +300,13 @@ class Timer:
                 else:
                     self.refresh_timer_windows()
 
-                self._set_seconds = self._seconds_left
-                if self._set_seconds < 1:
+                # self._set_seconds = self._seconds_left
+                if self._timekeeper.seconds_left < 1:
                     break
                 curses.doupdate()
                 sleep(0.5)
 
-        if self._set_seconds < 1:
+        if self._timekeeper.seconds_left < 1:
             self._alarm()
             self.switch_mode(start=True)
         return None
